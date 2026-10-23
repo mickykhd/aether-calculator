@@ -20,7 +20,7 @@ fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
         title = "Aether Calculator",
-        state = rememberWindowState(width = 420.dp, height = 760.dp),
+        state = rememberWindowState(width = 420.dp, height = 800.dp),
     ) {
         App()
     }

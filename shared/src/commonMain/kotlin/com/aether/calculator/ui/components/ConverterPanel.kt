@@ -15,6 +15,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.aether.calculator.core.NumberFormat
 import com.aether.calculator.core.UnitCategory
 import com.aether.calculator.ui.CalculatorController
@@ -69,31 +71,42 @@ private val ValueExit = fadeOut(tween(140)) + slideOutVertically(tween(200)) { -
  * Every change the user makes — a new unit, a new category, a swap — moves the numbers
  * into place instead of snapping them, so it is always clear which value belongs to
  * which unit.
+ *
+ * The panel is taller than the canvas on a short window, so it scrolls: the card the
+ * user has not reached yet is never hidden behind the keypad.
  */
 @Composable
 fun ConverterPanel(controller: CalculatorController, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        CategoryChips(controller)
-        ValueCard(
-            label = "FROM",
-            value = NumberFormat.displayTyped(controller.converterValue),
-            unit = controller.converterCategory.units[controller.converterFromIndex],
-            valueColor = AetherColors.OnSurface,
-            onPickUnit = { controller.converterPicker = ConverterTarget.FROM },
-        )
-        SwapButton(controller)
-        ValueCard(
-            label = "TO",
-            value = controller.converterResult,
-            unit = controller.converterCategory.units[controller.converterToIndex],
-            valueColor = AetherColors.Primary,
-            onPickUnit = { controller.converterPicker = ConverterTarget.TO },
-        )
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        // A short canvas gets a tighter layout, so the two cards and the swap button
+        // fit without scrolling where they can.
+        val compact = maxHeight < 260.dp
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
+        ) {
+            CategoryChips(controller, compact)
+            ValueCard(
+                label = "FROM",
+                value = NumberFormat.displayTyped(controller.converterValue),
+                unit = controller.converterCategory.units[controller.converterFromIndex],
+                valueColor = AetherColors.OnSurface,
+                compact = compact,
+                onPickUnit = { controller.converterPicker = ConverterTarget.FROM },
+            )
+            SwapButton(controller, compact)
+            ValueCard(
+                label = "TO",
+                value = controller.converterResult,
+                unit = controller.converterCategory.units[controller.converterToIndex],
+                valueColor = AetherColors.Primary,
+                compact = compact,
+                onPickUnit = { controller.converterPicker = ConverterTarget.TO },
+            )
+        }
     }
 }
 
@@ -103,7 +116,7 @@ fun ConverterPanel(controller: CalculatorController, modifier: Modifier = Modifi
  * It turns as it is pressed, so the swap is visible and not just a change of numbers.
  */
 @Composable
-private fun SwapButton(controller: CalculatorController) {
+private fun SwapButton(controller: CalculatorController, compact: Boolean) {
     var turned by remember { mutableStateOf(false) }
     val rotation by animateFloatAsState(
         targetValue = if (turned) 180f else 0f,
@@ -120,7 +133,7 @@ private fun SwapButton(controller: CalculatorController) {
             background = AetherColors.SurfaceContainerHigh,
             borderColor = AetherColors.OutlineVariant.copy(alpha = 0.3f),
             pressedScale = 0.9f,
-            modifier = Modifier.size(40.dp),
+            modifier = Modifier.size(if (compact) 32.dp else 40.dp),
         ) {
             Icon(
                 imageVector = Icons.Outlined.SwapHoriz,
@@ -135,7 +148,7 @@ private fun SwapButton(controller: CalculatorController) {
 }
 
 @Composable
-private fun CategoryChips(controller: CalculatorController) {
+private fun CategoryChips(controller: CalculatorController, compact: Boolean) {
     val scrollState = rememberScrollState()
     Row(
         modifier = Modifier
@@ -166,7 +179,10 @@ private fun CategoryChips(controller: CalculatorController) {
                     text = category.label,
                     style = AetherType.LabelMonoTag,
                     color = content,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    modifier = Modifier.padding(
+                        horizontal = 12.dp,
+                        vertical = if (compact) 4.dp else 7.dp,
+                    ),
                 )
             }
         }
@@ -179,6 +195,7 @@ private fun ValueCard(
     value: String,
     unit: com.aether.calculator.core.Unit,
     valueColor: Color,
+    compact: Boolean,
     onPickUnit: () -> Unit,
 ) {
     Column(
@@ -187,14 +204,14 @@ private fun ValueCard(
             .clip(AetherShapes.Default)
             .background(AetherColors.SurfaceContainer)
             .border(1.dp, AetherColors.OutlineVariant.copy(alpha = 0.2f), AetherShapes.Default)
-            .padding(16.dp),
+            .padding(if (compact) 8.dp else 16.dp),
     ) {
         Text(
             text = label,
             style = AetherType.LabelMonoTag,
             color = AetherColors.OnSurfaceVariant.copy(alpha = 0.6f),
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(if (compact) 2.dp else 4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             // The value and the unit cross-fade when they are replaced.
             AnimatedContent(
@@ -205,7 +222,15 @@ private fun ValueCard(
             ) { shown ->
                 Text(
                     text = shown,
-                    style = AetherType.HeadlineDisplayCompressed,
+                    style = if (compact) {
+                        // A shorter canvas needs a shorter number.
+                        AetherType.HeadlineDisplayCompressed.copy(
+                            fontSize = 24.sp,
+                            lineHeight = 30.sp,
+                        )
+                    } else {
+                        AetherType.HeadlineDisplayCompressed
+                    },
                     color = valueColor,
                     maxLines = 1,
                 )
@@ -226,7 +251,10 @@ private fun ValueCard(
                         text = shown,
                         style = AetherType.LabelKeypadSecondary,
                         color = AetherColors.OnSurface,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(
+                            horizontal = 14.dp,
+                            vertical = if (compact) 5.dp else 8.dp,
+                        ),
                     )
                 }
             }
